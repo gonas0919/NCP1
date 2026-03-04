@@ -10,12 +10,12 @@ services:
 
   # (2) Nginx 서비스
   nginx:
-    image: nginx:alpine  # 공식 Nginx 이미지를 가져다 씁니다.
+    image: nginx:alpine  # 공식 Nginx 이미지를 가져다 쓰기 때문에 build X
     container_name: nginx_proxy
     ports:
       - "80:80"  # 외부의 80번 포트를 컨테이너의 80번과 연결
     volumes:
-      # 내 폴더의 설정 파일을 컨테이너 안으로 주입 (수동 cp 과정 자동화)
+      # 내 폴더의 설정 파일을 컨테이너 안으로 주입
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
     depends_on:
       - web  # Flask가 먼저 켜진 뒤 Nginx가 켜지도록 순서 보장
