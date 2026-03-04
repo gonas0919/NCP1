@@ -39,7 +39,7 @@ jobs:
         with:
           host: ${{ secrets.NCP_HOST }}
           username: ${{ secrets.NCP_USER }}
-          password: ${{ secrets.GCP_PASSWORD }}
+          password: ${{ secrets.NCP_PASSWORD }}
           port: 22
           # 아래 script가 실제로 NCP 서버 안에서 쳐지는 명령어입니다.
           script: |
@@ -47,7 +47,7 @@ jobs:
             cd /tmp/my_repo
             
             # 2. 변경된 설정 파일(docker-compose.yml 등)만 가볍게 가져옴
-            git pull origin main
+            git pull origin master
             
             # 3. 도커 허브에서 방금 구워진 따끈따끈한 최신 이미지를 다운로드 (빌드 부하 0!)
             docker compose pull
