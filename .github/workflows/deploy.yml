@@ -39,7 +39,7 @@ jobs:
         with:
           host: ${{ secrets.NCP_HOST }}
           username: ${{ secrets.NCP_USER }}
-          key: ${{ secrets.NCP_SSH_KEY }}
+          password: ${{ secrets.GCP_PASSWORD }}
           port: 22
           # 아래 script가 실제로 NCP 서버 안에서 쳐지는 명령어입니다.
           script: |
