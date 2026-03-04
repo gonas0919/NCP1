@@ -3,7 +3,7 @@ name: CI/CD Pipeline (Docker Hub Pro Version)
 # 1. 언제 로봇이 출동할 것인가? (main 브랜치에 코드가 push 될 때)
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "master" ]
 
 jobs:
   # ==========================================================
