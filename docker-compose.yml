@@ -2,6 +2,9 @@ services:
   # (1) Flask 앱 서비스
   web:
     build: .  # 현재 폴더의 Dockerfile을 읽어서 빌드합니다.
+    image: gonas0919/my-ncp:latest
+    ports:
+      - "5000:5000"
     container_name: flask_app
     restart: always
 
