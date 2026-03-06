@@ -40,15 +40,21 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.NCP_HOST }} >> ~/.ssh/known_hosts
 
+      - name: Ensure remote deploy directory
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ secrets.NCP_USER }}@${{ secrets.NCP_HOST }} "
+            mkdir -p ~/my_repo
+          "
+
       - name: Copy deploy files
         run: |
           scp -i ~/.ssh/id_rsa -r docker-compose.yml nginx \
-            ${{ secrets.NCP_USER }}@${{ secrets.NCP_HOST }}:/tmp/my_repo/
+            ${{ secrets.NCP_USER }}@${{ secrets.NCP_HOST }}:~/my_repo/
 
       - name: Deploy on NCP
         run: |
           ssh -i ~/.ssh/id_rsa ${{ secrets.NCP_USER }}@${{ secrets.NCP_HOST }} "
-            cd /tmp/my_repo &&
+            cd ~/my_repo &&
             docker compose pull &&
             docker compose up -d --remove-orphans
           "
