@@ -1,11 +1,31 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <title>아아아아아아</title>
-</head>
-<body>
-    <h1>안녕하세요!dfdf</h1>
-    <h2>dfdfdfdfdfd</h2>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}Dashboard | NCP Auth Demo{% endblock %}
+{% block content %}
+<section class="card dashboard">
+  <p class="eyebrow">Authenticated Session</p>
+  <h1>{{ user["username"] }}님, 환영합니다.</h1>
+  <p class="lead">
+    이 페이지는 로그인된 사용자만 접근할 수 있습니다.
+    PR 보안게이트 실습 시 인증이 필요한 엔드포인트 대상으로 활용할 수 있습니다.
+  </p>
+
+  <div class="meta-grid">
+    <div class="meta-item">
+      <span>Username</span>
+      <strong>{{ user["username"] }}</strong>
+    </div>
+    <div class="meta-item">
+      <span>Email</span>
+      <strong>{{ user["email"] }}</strong>
+    </div>
+    <div class="meta-item">
+      <span>Joined</span>
+      <strong>{{ user["created_at"] }}</strong>
+    </div>
+    <div class="meta-item">
+      <span>Route</span>
+      <strong>/ (protected)</strong>
+    </div>
+  </div>
+</section>
+{% endblock %}
