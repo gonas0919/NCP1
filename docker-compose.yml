@@ -2,19 +2,20 @@ services:
   web:
     build: .
     image: gonas0919/my-ncp:latest
-    container_name: flask_app
     ports:
       - "5000:5000"
     environment:
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
-      DATABASE_PATH: /app/data/app.db
-    volumes:
-      - ./data:/app/data
+      DATABASE_URL: postgresql://appuser:apppassword@db:5432/appdb
+      DB_INIT_RETRIES: "30"
+      DB_INIT_DELAY_SECONDS: "1.5"
+    depends_on:
+      db:
+        condition: service_healthy
     restart: always
 
   nginx:
     image: nginx:alpine
-    container_name: nginx_proxy
     ports:
       - "80:80"
     volumes:
@@ -22,3 +23,21 @@ services:
     depends_on:
       - web
     restart: always
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: apppassword
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d appdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: always
+
+volumes:
+  postgres_data:

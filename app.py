@@ -1,22 +1,25 @@
 import os
-import sqlite3
-from pathlib import Path
+import time
 
+import psycopg
 from flask import Flask, flash, g, redirect, render_template, request, session, url_for
+from psycopg import errors
+from psycopg.rows import dict_row
 from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-me-in-production")
-app.config["DATABASE_PATH"] = os.environ.get("DATABASE_PATH", str(Path("data") / "app.db"))
+app.config["DATABASE_URL"] = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://appuser:apppassword@db:5432/appdb",
+)
+app.config["DB_INIT_RETRIES"] = int(os.environ.get("DB_INIT_RETRIES", "20"))
+app.config["DB_INIT_DELAY_SECONDS"] = float(os.environ.get("DB_INIT_DELAY_SECONDS", "1.5"))
 
 
 def get_db():
     if "db" not in g:
-        db_path = Path(app.config["DATABASE_PATH"])
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        g.db = conn
+        g.db = psycopg.connect(app.config["DATABASE_URL"], row_factory=dict_row)
     return g.db
 
 
@@ -29,29 +32,53 @@ def close_db(_exception):
 
 def init_db():
     db = get_db()
-    db.execute(
-        """
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL UNIQUE,
-            email TEXT NOT NULL UNIQUE,
-            password_hash TEXT NOT NULL,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    with db.cursor() as cur:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id BIGSERIAL PRIMARY KEY,
+                username VARCHAR(64) NOT NULL UNIQUE,
+                email VARCHAR(255) NOT NULL UNIQUE,
+                password_hash VARCHAR(255) NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
         )
-        """
-    )
     db.commit()
+
+
+def initialize_database_with_retry():
+    last_error = None
+    for attempt in range(1, app.config["DB_INIT_RETRIES"] + 1):
+        try:
+            with app.app_context():
+                init_db()
+            return
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            app.logger.warning(
+                "DB init failed (%s/%s): %s",
+                attempt,
+                app.config["DB_INIT_RETRIES"],
+                exc,
+            )
+            time.sleep(app.config["DB_INIT_DELAY_SECONDS"])
+
+    raise RuntimeError("Unable to initialize database after retries") from last_error
 
 
 def find_current_user():
     user_id = session.get("user_id")
     if user_id is None:
         return None
+
     db = get_db()
-    return db.execute(
-        "SELECT id, username, email, created_at FROM users WHERE id = ?",
-        (user_id,),
-    ).fetchone()
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT id, username, email, created_at FROM users WHERE id = %s",
+            (user_id,),
+        )
+        return cur.fetchone()
 
 
 @app.context_processor
@@ -89,12 +116,17 @@ def register():
         else:
             db = get_db()
             try:
-                db.execute(
-                    "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
-                    (username, email, generate_password_hash(password)),
-                )
+                with db.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO users (username, email, password_hash)
+                        VALUES (%s, %s, %s)
+                        """,
+                        (username, email, generate_password_hash(password)),
+                    )
                 db.commit()
-            except sqlite3.IntegrityError:
+            except errors.UniqueViolation:
+                db.rollback()
                 flash("이미 사용 중인 아이디 또는 이메일입니다.", "error")
             else:
                 flash("회원가입이 완료되었습니다. 로그인해 주세요.", "success")
@@ -111,11 +143,18 @@ def login():
     if request.method == "POST":
         identity = request.form.get("identity", "").strip().lower()
         password = request.form.get("password", "")
+
         db = get_db()
-        user = db.execute(
-            "SELECT id, username, email, password_hash FROM users WHERE username = ? OR email = ?",
-            (identity, identity),
-        ).fetchone()
+        with db.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, username, email, password_hash
+                FROM users
+                WHERE username = %s OR email = %s
+                """,
+                (identity, identity),
+            )
+            user = cur.fetchone()
 
         if user is None or not check_password_hash(user["password_hash"], password):
             flash("아이디(또는 이메일) / 비밀번호가 올바르지 않습니다.", "error")
@@ -140,8 +179,7 @@ def health():
     return {"status": "ok"}, 200
 
 
-with app.app_context():
-    init_db()
+initialize_database_with_retry()
 
 
 if __name__ == "__main__":

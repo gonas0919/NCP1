@@ -99,5 +99,3 @@ dist
 # SvelteKit build / generate output
 .svelte-kit
 __pycache__/
-data/*.db
-instance/*.db

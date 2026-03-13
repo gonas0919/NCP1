@@ -17,5 +17,3 @@ htmlcov/
 dist/
 build/
 *.log
-data/
-instance/
