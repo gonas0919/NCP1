@@ -48,13 +48,14 @@ jobs:
       - name: Trivy image scan (HIGH/CRITICAL fail)
         uses: aquasecurity/trivy-action@0.33.1
         with:
+          version: v0.69.3
+          token-setup-trivy: ${{ secrets.GITHUB_TOKEN }}
           image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/my-ncp:${{ github.sha }}
           vuln-type: os,library
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-          exit-code: 1
+          exit-code: '1'
           format: table
-          token-setup-trivy: ${{ secrets.GITHUB_TOKEN }}
           
 
   deploy:
