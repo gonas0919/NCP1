@@ -1,0 +1,155 @@
+name: Security Gate
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  semgrep_sast:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Semgrep
+        run: |
+          python -m pip install --upgrade pip
+          pip install semgrep
+
+      - name: Run Semgrep (fail on findings)
+        run: semgrep scan --config p/ci --error --sarif --output semgrep.sarif
+
+      - name: Upload Semgrep SARIF
+        if: always() && hashFiles('semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+
+  sca_pip_audit:
+    name: SCA (pip-audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install pip-audit
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit
+
+      - name: Run pip-audit (strict)
+        run: pip-audit -r requirements.txt --strict --format json --output pip-audit.json
+
+      - name: Upload pip-audit report
+        if: always() && hashFiles('pip-audit.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-report
+          path: pip-audit.json
+          retention-days: 7
+
+  secrets_gitleaks:
+    name: Secrets (Gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+
+  iac_checkov:
+    name: IaC (Checkov)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: github_actions,dockerfile,terraform,kubernetes
+          output_format: sarif
+          output_file_path: checkov.sarif
+
+      - name: Upload Checkov SARIF
+        if: always() && hashFiles('checkov.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov.sarif
+
+  security_gate:
+    name: Security Gate (Final Policy)
+    needs:
+      - semgrep_sast
+      - sca_pip_audit
+      - secrets_gitleaks
+      - iac_checkov
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate all security jobs
+        run: |
+          echo "semgrep_sast=${{ needs.semgrep_sast.result }}"
+          echo "sca_pip_audit=${{ needs.sca_pip_audit.result }}"
+          echo "secrets_gitleaks=${{ needs.secrets_gitleaks.result }}"
+          echo "iac_checkov=${{ needs.iac_checkov.result }}"
+
+          fail=0
+          for result in \
+            "${{ needs.semgrep_sast.result }}" \
+            "${{ needs.sca_pip_audit.result }}" \
+            "${{ needs.secrets_gitleaks.result }}" \
+            "${{ needs.iac_checkov.result }}"; do
+            if [ "$result" != "success" ]; then
+              fail=1
+            fi
+          done
+
+          if [ "$fail" -ne 0 ]; then
+            echo "Security gate failed. One or more scanners reported issues."
+            exit 1
+          fi
+
+          echo "Security gate passed. All scanners succeeded."
